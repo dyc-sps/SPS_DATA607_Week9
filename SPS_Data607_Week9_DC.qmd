@@ -2,6 +2,7 @@
 title: "SPS_Data607_Week9_DC"
 format: html
 editor: visual
+author: "David Chen"
 ---
 
 **Assignment: Using a New York Times API in R**
