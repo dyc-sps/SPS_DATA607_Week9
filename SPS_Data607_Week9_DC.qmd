@@ -1,0 +1,196 @@
+---
+title: "SPS_Data607_Week9_DC"
+format: html
+editor: visual
+---
+
+**Assignment: Using a New York Times API in R**
+
+The New York Times provides multiple public APIs via its developer portal (NYT Developer Network). To use any NYT API, you must first **create an account and obtain an API key**.
+
+Your task:
+
+1.  **Choose one** New York Times API endpoint (e.g., Article Search, Most Popular, Books, etc.).  You should use your data analysis to ask and attempt to answer an interesting question of your choosing.  Examples:  “What are the top five best selling hard cover books?”, “Which newspaper sections have produced the most popular articles, and how has this changed compared to X years ago?”, etc.
+
+2.  In **R**, write code to:
+
+```         
+-    Authenticate using your API key.
+Never hard code an API key. 
+There are a number of good ways to do this. 
+For example: Store it in an environment variable 
+(e.g., `Sys.getenv("NYT_API_KEY"`)).
+
+-    Make a request to the endpoint
+
+-    Parse the **JSON** response
+
+-    Transform the result into a clean **R data frame** (tibble is fine)
+```
+
+**Deliverable**
+
+-   A single Quarto (.qmd) document that includes:
+
+```         
+-    The API you selected (endpoint + brief description)
+
+-    The request you made (parameters used)
+
+-    Code that returns a tidy data frame
+
+-    A short note describing any data-cleaning decisions (e.g., nested fields, missing values)
+```
+
+## Approach
+
+-   Talk to the The New York Times API
+
+-   Handle JSON data (API responses)
+
+-   Clean and analyze data
+
+-   Make charts
+
+## Setup
+
+httr → sends a request to NYT (like opening a webpage automatically)
+
+jsonlite → converts API response into table format
+
+dplyr → lets you filter/select columns easily
+
+ggplot2 → creates graphs
+
+```{r}
+#install.packages(c("httr", "jsonlite", "dplyr", "ggplot2"))
+knitr::opts_chunk$set(cache = TRUE)
+library(httr)
+library(jsonlite)
+library(dplyr)
+library(ggplot2)
+```
+
+Set API key:
+
+```{r}
+Sys.setenv(NYT_API_KEY = "DGkAWyGbtH9guBDRY0seBsnGrdb8Lkx9s2qYsEgyNXTYLT1T7")
+```
+
+## API Function
+
+creating a **reusable function** that:
+
+1.  asks the [New York Times Article Search API]{.underline} for data
+
+    -   `query` = what you search (e.g., "China")
+
+    -   `begin_date` / `end_date` = time range
+
+    -   `page` = which batch of results
+
+2.  returns articles as a table
+
+```{r}
+nyt_search <- function(query, begin_date, end_date, page = 0) {
+  api_key <- Sys.getenv("NYT_API_KEY")
+  
+  url <- "https://api.nytimes.com/svc/search/v2/articlesearch.json"
+  
+  res <- GET(url, query = list(
+    q = query,
+    begin_date = begin_date,
+    end_date = end_date,
+    page = page,
+    `api-key` = api_key
+  ))
+  
+  nyt_content <- content(res, as = "text", encoding = "UTF-8")
+  #print(nyt_content)
+  json <- fromJSON(nyt_content, flatten = TRUE)
+  
+  return(json$response$docs)
+}
+```
+
+## Data Collection
+
+The API does NOT give all results at once
+
+Each request = 10 articles Need a loop to get more
+
+Create a data container with a loop to collect and store all results from API calls. Implement a delay (timer) between requests to prevent the NYT API from rate-limiting or blocking the API key.
+
+```{r,error=TRUE, message=FALSE, warning=FALSE,cache=TRUE}
+
+all_articles <- list()
+
+for (p in 0:50) {
+  #cat("Fetching page:", p, "\n")
+  tmp <- nyt_search("China", 19290101, 19291231, p)
+  
+  if (length(tmp) == 0) break
+  all_articles[[p + 1]] <- tmp
+  
+  Sys.sleep(15) # the rate limit is 5 req per 60s
+}
+
+df <- bind_rows(all_articles)
+```
+
+## Data Cleaning
+
+Raw API data is untidy
+
+-   Keep only useful columns
+
+-   Rename them
+
+-   Fix date format
+
+```{r}
+df_clean <- df %>%
+  select(
+    headline = headline.main,
+    pub_date,
+    snippet,
+    section_name,
+    web_url
+  ) %>%
+  mutate(pub_date = as.Date(pub_date))
+
+head(df_clean)
+```
+
+## Analysis
+
+### Articles Over Time
+
+```{r}
+df_clean %>%
+  mutate(month = format(pub_date, "%Y-%m")) %>%
+  count(month) %>%
+  ggplot(aes(x = month, y = n, group = 1)) +
+  geom_col() +
+  #geom_point() +
+  theme_minimal() +
+  labs(title = "NYT Articles About China (1929)",
+       x = "Month",
+       y = "Number of Articles")
+```
+
+### Keyword Exploration
+
+```{r}
+war_articles <- df_clean %>%
+  filter(grepl("Peking", snippet, ignore.case = TRUE))
+
+head(war_articles)
+```
+### Conclusion
+
+In conclusion, the New York Times API provides a powerful way to retrieve and analyze historical news data using R. Through this project, we were able to collect article counts by month and filter results based on specific keywords. This enabled meaningful comparisons across different years and laid the foundation for identifying trends, such as which keywords appear most frequently in news coverage. Furthermore, these results can be extended with statistical or predictive models to better understand patterns in media attention over time. However, due to API rate limits, it may not be possible to fully complete large-scale data collection within the given timeframe, which remains a key limitation of this task.
+
+### LLMS used:
+
+• OpenAI. (2025). ChatGPT (Version 5.2) \[Large language model\]. https://chat.openai.com. Accessed Mar 28, 2026.
